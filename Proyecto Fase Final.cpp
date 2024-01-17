@@ -1,8 +1,8 @@
-
 #include <iostream>
+#include <ncurses.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string>
+#include <string.h>
 #include <cctype>
 #include <limits>
 #include <fstream>
@@ -12,12 +12,14 @@
 #include <vector>
 #include <algorithm>
 #include <sstream>
-
+#include <unordered_map>
+#include <cstring>
 using namespace std;
 
 struct Articulo {
     int Codigo;
     char Nombre[50];
+    char Descripcion[250];
     int Precio;
     int Cantidad;
 };
@@ -27,15 +29,12 @@ struct Cliente {
     char NombreApellido[50];
     char Direccion[100];
     char Telefono[15];
-    int  frecuencia;
-    double montoTotal;
 };
 
 struct Vendedor {
     int Cedula;
     char NombreApellido[50];
     char FechaIngreso[15]; 
-    float PorcentajeComision;
 };
 
 struct Nodo {
@@ -52,7 +51,184 @@ struct NodoVendedor {
     Vendedor vendedor;
     NodoVendedor* siguiente;
 };
+struct Factura {
+    int NumeroFactura;
+    Cliente datosCliente;
+    Vendedor datosVendedor;
+    Articulo articulos[50]; 
+    int cantidadArticulos;
+    int totalCompra;
+};
+struct NodoFactura {
+    Factura factura;
+    NodoFactura* siguiente;
+};
 
+Cliente* buscarClienteFactura(NodoCliente* listaClientes, int cedula) {
+    NodoCliente* actual = listaClientes;
+    while (actual != nullptr) {
+        if (actual->cliente.Cedula == cedula) {
+            return &(actual->cliente);
+        }
+        actual = actual->siguiente;
+    }
+    return nullptr;  
+}
+Vendedor* buscarVendedorFactura(NodoVendedor* listaVendedores, int cedula) {
+    NodoVendedor* actual = listaVendedores;
+    while (actual != nullptr) {
+        if (actual->vendedor.Cedula == cedula) {
+            return &(actual->vendedor);
+        }
+        actual = actual->siguiente;
+    }
+    return nullptr; 
+}
+int calcularTotalCompra(Articulo articulos[], int cantidadArticulos) {
+    int total = 0;
+    for (int i = 0; i < cantidadArticulos; ++i) {
+        total += articulos[i].Precio * articulos[i].Cantidad;
+    }
+    return total;
+}
+
+Articulo* buscarArticuloPorCodigoFactura(Nodo* listaArticulos, int codigo) {
+    for (Nodo* nodo = listaArticulos; nodo != nullptr; nodo = nodo->siguiente) {
+        if (nodo->articulo.Codigo == codigo) {
+            return &(nodo->articulo);
+        }
+    }
+    return nullptr;
+}
+
+void limpiar_pantalla()
+{
+  #ifdef _WIN32
+    system("cls");
+  #else
+    system("clear");
+  #endif
+}
+
+void agregarFactura(NodoFactura*& listaFacturas, const Factura& nuevaFactura) {
+    NodoFactura* nuevoNodo = new NodoFactura;
+    nuevoNodo->factura = nuevaFactura;
+    nuevoNodo->siguiente = listaFacturas;
+    listaFacturas = nuevoNodo;
+}
+
+void mostrarRegistrodeFacturas(NodoFactura* listaFacturas) {
+    cout << "\n-------------------------------------- Facturas --------------------------------------" << endl;
+    for (NodoFactura* nodo = listaFacturas; nodo != nullptr; nodo = nodo->siguiente) {
+        const Factura& factura = nodo->factura;
+        cout << setw(25) << left << "Numero de Factura:" << factura.NumeroFactura << endl;
+        cout << setw(25) << left << "Datos del Cliente:" << factura.datosCliente.NombreApellido
+            << " (Cedula: " << factura.datosCliente.Cedula << ")" << endl;
+        cout << setw(25) << left << "Datos del Vendedor:" << factura.datosVendedor.NombreApellido
+            << " (Cedula: " << factura.datosVendedor.Cedula << ")" << endl;
+        cout << "\n" << setw(10) << left << "Codigo" << setw(30) << left << "Nombre"
+            << setw(15) << left << "Cantidad" << setw(15) << left << "Precio"
+            << setw(15) << left << "Total" << endl;
+        for (int i = 0; i < factura.cantidadArticulos; ++i) {
+            cout << setw(10) << left << factura.articulos[i].Codigo;
+                string nombre = factura.articulos[i].Nombre;
+                cout << setw(30) << left << nombre.substr(0, 29);
+                cout << setw(15) << left << factura.articulos[i].Cantidad;
+                cout << setw(15) << left << factura.articulos[i].Precio;
+                cout << setw(15) << left << (factura.articulos[i].Precio * factura.articulos[i].Cantidad) << endl;
+        }
+        cout << "\n" << setw(65) << right << "Total de la compra: " << factura.totalCompra << "$" << endl;
+        cout << "\n--------------------------------------------------------------------------------------";
+    }
+}
+Cliente LlenarClienteFactura(NodoCliente* listaClientes) {
+    int cedulaCliente;
+    cout << "\n Ingrese la cedula del cliente: ";
+    while (!(cin >> cedulaCliente) || cedulaCliente < 0) {
+        cout << "\n Error ingrese una cedula valida: ";
+        cin.clear();
+        cin.ignore(numeric_limits<streamsize>::max(), '\n'); 
+    }
+    Cliente* cliente = buscarClienteFactura(listaClientes, cedulaCliente);
+    while (cliente == nullptr) {
+        cout << "\n Cliente no encontrado. Intente nuevamente: ";
+        while (!(cin >> cedulaCliente) || cedulaCliente < 0) {
+            cout << "\n Error ingrese una cedula valida: ";
+            cin.clear();
+            cin.ignore(numeric_limits<streamsize>::max(), '\n'); 
+        }
+        cliente = buscarClienteFactura(listaClientes, cedulaCliente);
+    }
+    cout << "\n Cliente cargado correctamente";
+    return *cliente;
+}
+Vendedor LlenarVendedorFactura(NodoVendedor* listaVendedores) {
+    int cedulaVendedor;
+    cout << "\n Ingrese la cedula del vendedor: ";
+    cin >> cedulaVendedor;
+    while (cin.fail()) {
+        cout << "\n Error ingrese una cedula valida: ";
+        cin.clear();
+        cin.ignore(numeric_limits<streamsize>::max(), '\n'); 
+        cin >> cedulaVendedor;
+    }
+    Vendedor* vendedor = buscarVendedorFactura(listaVendedores, cedulaVendedor);
+    while (vendedor == nullptr) {
+        cout << "\n Vendedor no encontrado. Intente nuevamente: ";
+        cin >> cedulaVendedor;
+        while (cin.fail()) {
+            cout << "\n Error ingrese una cedula valida: ";
+            cin.clear();
+            cin.ignore(numeric_limits<streamsize>::max(), '\n'); 
+            cin >> cedulaVendedor;
+        }
+        vendedor = buscarVendedorFactura(listaVendedores, cedulaVendedor);
+    }
+    cout << "\n Vendedor cargado correctamente";
+    return *vendedor;
+}
+void LlenarArticulosFactura(Nodo* listaArticulos, Factura& nuevaFactura) {
+    int cantidadArticulos;
+    cout << "\n Ingrese la cantidad de Articulos que compro el cliente: ";
+    cin >> cantidadArticulos;
+    for (int i = 0; i < cantidadArticulos && i < 50; ++i) {
+        int codigoArticulo;
+        cout << "\n Codigo del articulo: ";
+        cin >> codigoArticulo;
+        if (codigoArticulo == -1) {
+            break;
+        }
+        Articulo* articulo = buscarArticuloPorCodigoFactura(listaArticulos, codigoArticulo);
+        if (articulo != nullptr) {
+            cout << " \n Cantidad: ";
+            int cantidad;
+            cin >> cantidad;
+            if (cantidad > 0 && cantidad <= articulo->Cantidad) {
+                nuevaFactura.articulos[i] = *articulo;
+                nuevaFactura.articulos[i].Cantidad = cantidad;
+            } else {
+                cout << "\n Cantidad no valida o no disponible. Intentelo nuevamente." << endl;
+                --i;
+            }
+        } else {
+            cout << "\n Articulo no encontrado." << endl;
+            --i; 
+        }
+    }
+    nuevaFactura.cantidadArticulos = min(cantidadArticulos, 50);
+}
+
+int generarNumeroFactura(const NodoFactura* listaFacturas) {
+    if (listaFacturas == nullptr) {
+        return 1;
+    } else {
+        const NodoFactura* ultimoNodo = listaFacturas;
+        while (ultimoNodo->siguiente != nullptr) {
+            ultimoNodo = ultimoNodo->siguiente;
+        }
+        return ultimoNodo->factura.NumeroFactura + 1;
+    }
+}
 void agregarDatos(Nodo*& lista, const Articulo& nuevoArticulo) {
     Nodo* nuevoNodo = new Nodo{ nuevoArticulo, nullptr };
     if (lista == nullptr) {
@@ -62,6 +238,93 @@ void agregarDatos(Nodo*& lista, const Articulo& nuevoArticulo) {
         lista = nuevoNodo;
     }
 }
+
+class Diccionario {
+private:
+    Nodo* inicio;
+
+    void agregarDatos(Nodo*& lista, const Articulo& nuevoArticulo) {
+        Nodo* nuevoNodo = new Nodo{ nuevoArticulo, nullptr };
+        if (lista == nullptr) {
+            lista = nuevoNodo;
+        } else {
+            nuevoNodo->siguiente = lista;
+            lista = nuevoNodo;
+        }
+    }
+
+    void mostrarInformacion(const Articulo& articulo) const {
+    system("CLS");
+    const int colWidthCodigo = 10;
+    const int colWidthNombre = 20;
+    const int colWidthDescripcion = 60;
+    const int colWidthPrecio = 10;
+    const int colWidthCantidad = 10;
+    cout << "Codigo: " << articulo.Codigo << endl;
+    cout << "Nombre: " << articulo.Nombre << endl;
+    cout << "Descripcion: " << articulo.Descripcion << endl;
+    cout << "Precio: " << articulo.Precio << "$" << endl;
+    cout << "Cantidad: " << articulo.Cantidad << endl;
+    cout << "\n Pulse una tecla para continuar...";
+    getch();
+}
+
+public:
+    Diccionario() : inicio(nullptr) {}
+
+    void agregarArticulo(const Articulo& nuevoArticulo) {
+        agregarDatos(inicio, nuevoArticulo);
+    }
+
+    void mostrarArticulos() const {
+        Nodo* actual = inicio;
+        while (actual != nullptr) {
+            mostrarInformacion(actual->articulo);
+            actual = actual->siguiente;
+        }
+    }
+
+    void modificarDescripcion(int codigo, const char* nuevaDescripcion) {
+        Nodo* actual = inicio;
+        while (actual != nullptr) {
+            if (actual->articulo.Codigo == codigo) {
+                strcpy(actual->articulo.Descripcion, nuevaDescripcion);
+                return;
+            }
+            actual = actual->siguiente;
+        }
+    }
+
+    void buscarPorCodigo(int codigo) const {
+        Nodo* actual = inicio;
+        bool encontrado = false;
+        while (actual != nullptr) {
+            if (actual->articulo.Codigo == codigo) {
+                mostrarInformacion(actual->articulo);
+                encontrado = true;
+                break;
+            }
+            actual = actual->siguiente;
+        }
+        if (!encontrado) {
+            cout << "No se encontraron articulos con el codigo proporcionado." << endl;
+        }
+    }
+
+    void buscarPorNombre(const char* nombre) const {
+        Nodo* actual = inicio;
+        while (actual != nullptr) {
+            if (strcmp(actual->articulo.Nombre, nombre) == 0) {
+                mostrarInformacion(actual->articulo);
+                return;
+            }
+            actual = actual->siguiente;
+        }
+        cout << "Articulo no encontrado por nombre." << endl;
+    }
+};
+
+
 
 void agregarCliente(NodoCliente*& lista, const Cliente& nuevoCliente) {
     NodoCliente* nuevoNodo = new NodoCliente{ nuevoCliente, nullptr };
@@ -85,42 +348,46 @@ void agregarVendedor(NodoVendedor*& lista, const Vendedor& nuevoVendedor) {
 
 void mostrarRegistrosdeArticulos(Nodo* lista) {
     Nodo* actual = lista;
+    cout << left << setw(15) << "Codigo" << setw(20) << "Nombre" << setw(15) << "Precio" << setw(15) << "Cantidad" << endl;
+    cout << setfill('-') << setw(65) << "-" << setfill(' ') << endl;
     while (actual != nullptr) {
-        cout << "Codigoo: " << actual->articulo.Codigo << ", Nombre: " << actual->articulo.Nombre << ", Precio: " << actual->articulo.Precio << ", Cantidad: " << actual->articulo.Cantidad << endl;
+        Articulo& articulo = actual->articulo;
+        cout << left << setw(15) << articulo.Codigo
+            << setw(20) << articulo.Nombre
+            << setw(15) << fixed << setprecision(2) << articulo.Precio
+            << setw(15) << articulo.Cantidad
+            << endl;
         actual = actual->siguiente;
-    }
-}
-void mostrarArticulosEnTabla(Nodo* listaArticulos) {
-    cout << left << setw(15) << "Codigo" << setw(15) << "Nombre" << setw(20) << "Precio" << setw(15) << "Cantidad" << endl;
-
-    for (Nodo* nodo = listaArticulos; nodo != nullptr; nodo = nodo->siguiente) {
-        Articulo& articulo = nodo->articulo;
-        cout << left << setw(10) << articulo.Codigo << setw(20) << articulo.Nombre << setw(22) << fixed << setprecision(5) << articulo.Precio << setw(10) << articulo.Cantidad << endl;
     }
 }
 
 void mostrarRegistrosdeClientes(NodoCliente* lista) {
-    NodoCliente* actual = lista;    
+    NodoCliente* actual = lista;
+    cout << setw(10) << "Cedula" << setw(20) << "Nombre" << setw(30) << "Direccion" << setw(15) << "Telefono" << setw(25)<< endl;
+    cout << setfill('-') << setw(100) << "-" << setfill(' ') << endl;
     while (actual != nullptr) {
-        cout << "Cedula: " << actual->cliente.Cedula << ", Nombre: " << actual->cliente.NombreApellido << ", Direccion: " << actual->cliente.Direccion << ", Telefono: " << actual->cliente.Telefono <<", Frecuencia de Compra: " << actual->cliente.frecuencia << endl;;
-        actual = actual->siguiente;
-    }
-}
-void mostrarClientesEnTabla(NodoCliente* listaClientes) {
-    cout << left << setw(15) << "Cedula" << setfill(' ') << setw(50) << "Nombre y Apellido" << setfill(' ') << setw(100) << "Direccion" << setfill(' ') << setw(15) << "Teléfono" << setfill(' ') << setw(10) << "Frecuencia" << endl;
-    for (NodoCliente* nodo = listaClientes; nodo != nullptr; nodo = nodo->siguiente) {
-    Cliente& cliente = nodo->cliente;
-    cout << left << setw(15) << cliente.Cedula << setfill(' ') << setw(50) << cliente.NombreApellido << setfill(' ') << setw(100) << cliente.Direccion << setfill(' ') << setw(15) << cliente.Telefono << setfill(' ') << setw(10) << cliente.frecuencia << endl;
-    }
-}
-void mostrarRegistrosdeVendedores(NodoVendedor* lista) {
-    NodoVendedor* actual = lista;
-    while (actual != nullptr) {
-        cout << "Cedula: " << actual->vendedor.Cedula << ", Nombre: " << actual->vendedor.NombreApellido << ", Fecha de Ingreso: " << actual->vendedor.FechaIngreso << ", Porcentaje de Comision: " << actual->vendedor.PorcentajeComision << endl;
+        cout << setw(10) << actual->cliente.Cedula
+            << setw(20) << actual->cliente.NombreApellido
+            << setw(30) << actual->cliente.Direccion
+            << setw(15) << actual->cliente.Telefono
+            << endl;
         actual = actual->siguiente;
     }
 }
 
+void mostrarRegistrosdeVendedores(NodoVendedor* lista) {
+    NodoVendedor* actual = lista;
+    cout << left << setw(15) << "Cedula" << setw(20) << "Nombre" << setw(20) << "Fecha Ingreso" << setw(25) << endl;
+    cout << setfill('-') << setw(80) << "-" << setfill(' ') << endl;
+    while (actual != nullptr) {
+        Vendedor& vendedor = actual->vendedor;
+        cout << left << setw(15) << vendedor.Cedula
+            << setw(20) << vendedor.NombreApellido
+            << setw(20) << vendedor.FechaIngreso
+            << endl;
+        actual = actual->siguiente;
+    }
+}
 void imprimirArticulo(const Articulo& articulo) {
     cout << "Codigo: " << articulo.Codigo << endl;
     cout << "Nombre: " << articulo.Nombre << endl;
@@ -143,18 +410,21 @@ void eliminarEspacios(char* str) {
     *dst = '\0';
 }
 
-std::string convertirFechaParaComparacion(const char* fecha) {
-    std::istringstream ss(fecha);
+
+string convertirFechaParaComparacion(const char* fecha) {
+    istringstream ss(fecha);
     int dia, mes, anio;
     char barra;
     ss >> dia >> barra >> mes >> barra >> anio;
-    std::ostringstream resultado;
-    resultado << std::setw(2) << std::setfill('0') << dia
-            << std::setw(2) << std::setfill('0') << mes
+    ostringstream resultado;
+    resultado << setw(2) << setfill('0') << dia
+            << setw(2) << setfill('0') << mes
             << anio;
 
     return resultado.str();
 }
+
+
 
 void buscarYMostrarArticulo(Nodo* listaArticulos, const char* nombreArticulo) {
     char nombreBusqueda[50];
@@ -226,7 +496,6 @@ void imprimirInformacionCliente(const Cliente& cliente) {
     cout << "Nombre y Apellido: " << cliente.NombreApellido << endl;
     cout << "Direccion: " << cliente.Direccion << endl;
     cout << "Telefono: " << cliente.Telefono << endl;
-    cout << "Frecuencia: " << cliente.frecuencia << endl;
 }
 
 void buscarClientePorCedula(NodoCliente* listaClientes, int cedula) {
@@ -279,7 +548,6 @@ void imprimirInformacionVendedor(const Vendedor& vendedor) {
     cout << "Cedula: " << vendedor.Cedula << endl;
     cout << "Nombre y Apellido: " << vendedor.NombreApellido << endl;
     cout << "Fecha de Ingreso: " << vendedor.FechaIngreso << endl;
-    cout << "Porcentaje de Comision: " << vendedor.PorcentajeComision << endl;
 }
 void buscarVendedorPorCedula(NodoVendedor* listaVendedores, int cedula) {
     for (NodoVendedor* nodo = listaVendedores; nodo != nullptr; nodo = nodo->siguiente) {
@@ -310,10 +578,10 @@ void buscarVendedorPorNombreApellido(NodoVendedor* listaVendedores, const char* 
 
 vector<NodoVendedor*> buscarVendedorPorFechaIngreso(NodoVendedor* cabeza, const char* fecha) {
     vector<NodoVendedor*> vendedoresEncontrados;
-    std::string fechaConvertida = convertirFechaParaComparacion(fecha);
+    string fechaConvertida = convertirFechaParaComparacion(fecha);
     NodoVendedor* actual = cabeza;
     while (actual != nullptr) {
-        std::string fechaActualConvertida = convertirFechaParaComparacion(actual->vendedor.FechaIngreso);
+        string fechaActualConvertida = convertirFechaParaComparacion(actual->vendedor.FechaIngreso);
         if (fechaActualConvertida == fechaConvertida) {
             vendedoresEncontrados.push_back(actual);
             imprimirInformacionVendedor(actual->vendedor);
@@ -321,11 +589,13 @@ vector<NodoVendedor*> buscarVendedorPorFechaIngreso(NodoVendedor* cabeza, const 
         actual = actual->siguiente;
     }
     if (vendedoresEncontrados.empty()) {
-        cout << "No se encontró ningún vendedor con la fecha de ingreso " << fecha << endl;
+        cout << "No se encontro ningun vendedor con la fecha de ingreso " << fecha << endl;
     }
     return vendedoresEncontrados;
 }
-void modificarArticulo(Nodo*& lista, int codigo) {
+
+
+void modificarArticulo(Nodo*& lista, Diccionario& diccionario, int codigo) {
     Nodo* actual = lista;
     while (actual != nullptr) {
         if (actual->articulo.Codigo == codigo) {
@@ -333,10 +603,13 @@ void modificarArticulo(Nodo*& lista, int codigo) {
             cout << "Ingrese el nombre: ";
             cin.ignore();
             cin.getline(actual->articulo.Nombre, 50);
+            cout << "Ingrese la descripcion: ";
+            cin.getline(actual->articulo.Descripcion, 250);
             cout << "Ingrese el precio: ";
             cin >> actual->articulo.Precio;
             cout << "Ingrese la cantidad disponible: ";
             cin >> actual->articulo.Cantidad;
+            diccionario.modificarDescripcion(codigo, actual->articulo.Descripcion);
             cout << "Articulo actualizado correctamente.\n";
             return;
         }
@@ -375,8 +648,6 @@ void modificarVendedor(NodoVendedor*& lista, int cedula) {
             cin.getline(actual->vendedor.NombreApellido, 50);
             cout << "Ingrese la fecha de ingreso: ";
             cin.getline(actual->vendedor.FechaIngreso, 15);
-            cout << "Ingrese el porcentaje de comision: ";
-            cin >> actual->vendedor.PorcentajeComision;
             cout << "Vendedor actualizado correctamente.\n";
             return;
         }
@@ -462,7 +733,7 @@ int Esnum() {
     while (!(cin >> num)) {
         cin.clear();
         cin.ignore(numeric_limits<streamsize>::max(), '\n');
-        cout << "\n Por favor, ingresa un número: ";
+        cout << "\n Por favor, ingresa un numero: ";
     }
     return num;
 }
@@ -483,7 +754,7 @@ int obtenerCantidadArticulos() {
     while (!(cin >> n) || n <= 0) {
         cin.clear();
         cin.ignore(numeric_limits<streamsize>::max(), '\n');
-        cout << "\n Por favor, ingresa una cantidad válida: ";
+        cout << "\n Por favor, ingresa una cantidad valida: ";
     }
     cin.ignore();
     return n;
@@ -495,7 +766,7 @@ int obtenerCantidadClientes() {
     while (!(cin >> n) || n <= 0) {
         cin.clear();
         cin.ignore(numeric_limits<streamsize>::max(), '\n');
-        cout << "\n Por favor, ingresa una cantidad válida: ";
+        cout << "\n Por favor, ingresa una cantidad valida: ";
     }
     cin.ignore();
     return n;
@@ -507,11 +778,23 @@ int obtenerCantidadVendedores() {
     while (!(cin >> n) || n <= 0) {
         cin.clear();
         cin.ignore(numeric_limits<streamsize>::max(), '\n');
-        cout << "\n Por favor, ingresa una cantidad válida: ";
+        cout << "\n Por favor, ingresa una cantidad valida: ";
     }
     cin.ignore();
     return n;
 }
+int obtenerCantidadFacturas() {
+    int n;
+    cout << "\n Ingrese la cantidad de facturas que desea registrar: ";
+    while (!(cin >> n) || n <= 0) {
+        cin.clear();
+        cin.ignore(numeric_limits<streamsize>::max(), '\n');
+        cout << "\n Por favor, ingresa una cantidad valida: ";
+    }
+    cin.ignore();
+    return n;
+}
+
 
 void liberarMemoria(Nodo*& lista) {
     while (lista != nullptr) {
@@ -536,6 +819,13 @@ void liberarMemoriaVendedores(NodoVendedor*& lista) {
         delete temp;
     }
 }
+void liberarMemoriaFacturas(NodoFactura*& listaFacturas) {
+    while (listaFacturas != nullptr) {
+        NodoFactura* temp = listaFacturas;
+        listaFacturas = listaFacturas->siguiente;
+        delete temp;
+    }
+}
 
 NodoCliente* listaClientes = nullptr;
 NodoVendedor* listaVendedores = nullptr;
@@ -557,25 +847,30 @@ void agregarDatosArticuloUnico(Nodo*& lista, const Articulo& nuevoArticulo) {
     }
 }
 
-void leerArticulosDesdeArchivo(Nodo*& lista) {
+void leerArticulosDesdeArchivo(Diccionario& diccionario,Nodo*& lista) {
     ifstream archivo("Articulos.txt");
     if (!archivo) {
         cout << "No se pudo abrir el archivo de Articulos.txt" << endl;
         return;
     }
-    Articulo nuevoArticulo; 
+    Articulo nuevoArticulo;
     while (archivo.ignore(numeric_limits<streamsize>::max(), ':') && archivo >> nuevoArticulo.Codigo) {
         archivo.ignore(numeric_limits<streamsize>::max(), ':');
         archivo.getline(nuevoArticulo.Nombre, 50);
+        archivo.ignore(numeric_limits<streamsize>::max(), ':');
+        archivo.getline(nuevoArticulo.Descripcion, 250);
         archivo.ignore(numeric_limits<streamsize>::max(), ':');
         archivo >> nuevoArticulo.Precio;
         archivo.ignore(numeric_limits<streamsize>::max(), ':');
         archivo >> nuevoArticulo.Cantidad;
         archivo.ignore(numeric_limits<streamsize>::max(), '\n');
+        diccionario.agregarArticulo(nuevoArticulo);
         agregarDatosArticuloUnico(lista, nuevoArticulo);
     }
+
     archivo.close();
 }
+
 
 
 void agregarClienteUnico(NodoCliente*& lista, const Cliente& nuevoCliente) {
@@ -609,8 +904,6 @@ void leerClientesDesdeArchivo(NodoCliente*& lista) {
         archivo.getline(nuevoCliente.Direccion, 100);
         archivo.ignore(numeric_limits<streamsize>::max(), ':');
         archivo.getline(nuevoCliente.Telefono, 15);
-        archivo.ignore(numeric_limits<streamsize>::max(), ':');
-        archivo >> nuevoCliente.frecuencia;
         archivo.ignore(numeric_limits<streamsize>::max(), '\n');
         agregarClienteUnico(lista, nuevoCliente);
     }
@@ -648,30 +941,30 @@ void leerVendedoresDesdeArchivo(NodoVendedor*& lista) {
         archivo.ignore(numeric_limits<streamsize>::max(), ':');
         archivo.getline(nuevoVendedor.FechaIngreso, 15);
         archivo.ignore(numeric_limits<streamsize>::max(), ':');
-        archivo >> nuevoVendedor.PorcentajeComision;
-        archivo.ignore(numeric_limits<streamsize>::max(), '\n');
         agregarVendedorUnico(lista, nuevoVendedor);
     }
     archivo.close();
 }
 
-
 int main() {
+    Diccionario diccionario;
     Nodo* listaArticulos = nullptr;
+    NodoFactura* listaFacturas = nullptr;
+    
     int opcion;
     do {
         cout << "\n ****Bienvenido Tienda RGP****";
         cout << "\n 1. Gestion de Articulos";
         cout << "\n 2. Gestion de Clientes";
         cout << "\n 3. Gestion de Vendedores";
-        cout << "\n 4. Gestion de Descuentos";
-        cout << "\n 5. Generar Facturas";
-        cout << "\n 6. Salir";
+        cout << "\n 4. Gestion de Facturas";
+        cout << "\n 5. Salir";
         cout << "\n Su opcion: ";
         if (cin >> opcion) {
             switch (opcion) {
             case 1: {
-                int opcionArticulos;
+            limpiar_pantalla();
+            int opcionArticulos;
                 do {
                     cout << "\n ****Bienvenido al apartado de Articulos****";
                     cout << "\n 1. Agregar un Articulo";
@@ -681,12 +974,14 @@ int main() {
                     cout << "\n 5. Buscar Articulo";
                     cout << "\n 6. Guardar Articulos";
                     cout << "\n 7. Cargar Articulos";
-                    cout << "\n 8. Salir al menu anterior";
+                    cout << "\n 8. Buscar Descripciones";
+                    cout << "\n 9. Salir al menu anterior";
                     cout << "\n Su opcion: ";
                     if (cin >> opcionArticulos) {
                         switch (opcionArticulos) {
                         case 1: {
                             // Agregar Articulos
+                            limpiar_pantalla();
                             int n = obtenerCantidadArticulos();
                             for (int i = 0; i < n; i++) {
                                 Articulo nuevoArticulo;
@@ -699,26 +994,31 @@ int main() {
                                     cout << "\n Ingrese el nombre del Articulo " << i + 1 << " correctamente: ";
                                     cin.getline(nuevoArticulo.Nombre, 50);
                                 }
+                                cout << "\n Ingrese una descripcion del producto:";
+                                cin.getline(nuevoArticulo.Descripcion, 250);
                                 cout << "\n Ingrese el precio del Articulo " << i + 1 << ": ";
                                 nuevoArticulo.Precio = Esnum();
                                 cout << "\n Ingrese la cantidad disponible del Articulo " << i + 1 << ": ";
                                 nuevoArticulo.Cantidad = Esnum();
                                 cin.ignore();
                                 agregarDatos(listaArticulos, nuevoArticulo);
+                                diccionario.agregarArticulo(nuevoArticulo);
                                 cout << "\n Articulo Agregado Correctamente";
                             }
                             break;
                         }
                         case 2: {
                             // Modificar Articulos
+                            limpiar_pantalla();
                             int codigo;
                             cout << "Ingrese el codigo del Articulo a modificar: ";
                             cin >> codigo;
-                            modificarArticulo(listaArticulos, codigo);
+                            modificarArticulo(listaArticulos, diccionario, codigo);
                             break;
                         }
                         case 3: {
                             // Eliminar Articulos
+                            limpiar_pantalla();
                             int codigo;
                             cout << "Ingrese el codigo del Articulo a eliminar: ";
                             cin >> codigo;
@@ -727,16 +1027,17 @@ int main() {
                         }
                         case 4: {
                             // Mostrar Articulos
-                            
-                           system("clear");
-                            
-                            mostrarArticulosEnTabla(listaArticulos);
-                            
-
-                            system("sleep 5s");
+                            limpiar_pantalla();
+                            mostrarRegistrosdeArticulos(listaArticulos);
+                            cout << "\n Pulse una tecla para continuar...";
+                            initscr();
+                            getch();
+                            endwin();
                             break;
                         }
                         case 5: {
+                        limpiar_pantalla();
+
                         int opb;
                         int cantidad;
                         int precio;
@@ -770,7 +1071,8 @@ int main() {
                                     break;
                                 }
                                 case 4: {
-                                    cout << "\n Volviendo al menú anterior...\n";
+                                    limpiar_pantalla();
+                                    cout << "\n Volviendo al menu anterior...\n";
                                     break;
                                 }
                                 default:
@@ -781,11 +1083,13 @@ int main() {
                         }
                         case 6: {
                             //Guardar Estructura
+                        limpiar_pantalla();
                         ofstream archivo("Articulos.txt");
                         Nodo* actual = listaArticulos;
                         while (actual != nullptr) {
                             archivo << "Codigo: " << actual->articulo.Codigo << "\n";
                             archivo << "Nombre: " << actual->articulo.Nombre << "\n";
+                            archivo << "Descripcion: " << actual->articulo.Descripcion << "\n";
                             archivo << "Precio: " << actual->articulo.Precio <<"$" "\n";
                             archivo << "Cantidad: " << actual->articulo.Cantidad << "\n";
                             archivo << "------------------------\n";
@@ -796,6 +1100,7 @@ int main() {
                         break;
                         }
                         case 7: {
+                            limpiar_pantalla();
                             int opcionAA;
                             cout << "\n Desea cargar los articulos desde un archivo";
                             cout << "\n 1. Si";
@@ -804,11 +1109,13 @@ int main() {
                             cin >> opcionAA;
                             switch (opcionAA){
                             case 1:{
-                                leerArticulosDesdeArchivo(listaArticulos);
+                                limpiar_pantalla();
+                                leerArticulosDesdeArchivo(diccionario,listaArticulos);
                                 cout << "\n Articulos Cargados Exitosamente";
                                 break;
                             }
                             case 2: {
+                                limpiar_pantalla();
                                 cout << "\n Retornando al menu anterior";
                                 break;
                             }
@@ -817,24 +1124,63 @@ int main() {
                             }
                         break;
                         }
-                        case 8: {
+                        case 8:{
+                            limpiar_pantalla();
+                            int opcionDic;
+                            cout << "\n Seleccione la forma en la que quiere buscar la descripción";
+                            cout << "\n 1. Codigo";
+                            cout << "\n 2. Nombre";
+                            cout << "\n 3. Regresar al menu anterior";
+                            cout << "\n Su opcion:";
+                            cin >> opcionDic;
+                            switch (opcionDic) {
+                                case 1: {
+                                    limpiar_pantalla();
+                                    int codigo;
+                                    cout << "\n Ingrese el codigo del articulo: ";
+                                    cin >> codigo;
+                                    diccionario.buscarPorCodigo(codigo);
+                                    break;
+                                }
+                                case 2: {
+                                    limpiar_pantalla();
+                                    char nombre[50];
+                                    cout << "\n Ingrese el nombre del articulo: ";
+                                    cin.ignore();
+                                    cin.getline(nombre, 50);
+                                    diccionario.buscarPorNombre(nombre);
+                                    break;
+                                }
+                                case 3: {
+                                    cout << "\n Regresando al menu anterior...\n";
+                                    break;
+                                }
+                                default:
+                                    cout << "\n Opcion no valida. Intentalo de nuevo";
+                                    break;
+                            }
+                            break;
+                        }
+                        case 9:{
+                                limpiar_pantalla();
                                 cout << "\n Regresando al menu principal...\n";
-                        break;
+                            break;
                         }
                                 
                         default:
-                            cout << "\n Opción no válida. Inténtalo de nuevo.";
+                            cout << "\n Opcion no valida. Intentalo de nuevo.";
                             break;
                         }
                     } else {
-                        cout << "\n Opción no válida. Inténtalo de nuevo.";
+                        cout << "\n Opcion no válida. Intentalo de nuevo.";
                         cin.clear();
                         cin.ignore(numeric_limits<streamsize>::max(), '\n');
                     }
-                } while (opcionArticulos != 8);
+                } while (opcionArticulos != 9);
                     break;
             }
             case 2: {
+                limpiar_pantalla();
                 int opcionClientes;
                 do {
                     cout << "\n ****Bienvenido al apartado de Clientes****";
@@ -847,11 +1193,11 @@ int main() {
                     cout << "\n 7. Cargar Clientes";
                     cout << "\n 8. Salir al menu anterior";
                     cout << "\n Su opcion: ";
-
                     if (cin >> opcionClientes) {
                         switch (opcionClientes) {
                         case 1: {
                             // Agregar Clientes
+                            limpiar_pantalla();
                             int n = obtenerCantidadClientes();
                             for (int i = 0; i < n; i++) {
                                 Cliente nuevoCliente;
@@ -867,9 +1213,7 @@ int main() {
                                 cout << "\n Ingrese la direccion del Cliente " << i + 1 << ": ";
                                 cin.getline(nuevoCliente.Direccion, 100);
                                 cout << "\n Ingrese el telefono del Cliente " << i + 1 << ": ";
-                                cin.getline(nuevoCliente.Telefono, 15);
-                                cout << "\n Ingrese la frecuencia de compra del Cliente " << i + 1 << ": ";
-                                nuevoCliente.frecuencia = Esnum();
+                                cin.getline(nuevoCliente.Telefono, 15);;
                                 agregarCliente(listaClientes,nuevoCliente);
                                 cout << "\n Cliente Agregado Correctamente";
                             }
@@ -877,6 +1221,7 @@ int main() {
                         }
                         case 2: {
                             // Modificar Clientes
+                            limpiar_pantalla();
                             int cedula;
                             cout << "Ingrese la cedula del Cliente a modificar: ";
                             cin >> cedula;
@@ -885,6 +1230,7 @@ int main() {
                         }
                         case 3: {
                             // Eliminar Clientes
+                            limpiar_pantalla();
                             int cedula;
                             cout << "Ingrese la cedula del Cliente a eliminar: ";
                             cin >> cedula;
@@ -893,12 +1239,16 @@ int main() {
                         }
                         case 4: {
                             // Mostrar Clientes
-                            system("clear");
+                            limpiar_pantalla();
                             mostrarRegistrosdeClientes(listaClientes);
-                            system("sleep 5s");
+                            cout << "\n Pulse una tecla para continuar...";
+                            initscr();
+                            getch();
+                            endwin();
                             break;
                         }
                         case 5: {
+                        limpiar_pantalla();
                         int opcionBusquedaCliente;
                         cout << "\n ****Buscar Cliente****";
                         cout << "\n 1. Por Cedula";
@@ -909,6 +1259,7 @@ int main() {
                         if (cin >> opcionBusquedaCliente) {
                             switch (opcionBusquedaCliente) {
                             case 1: {
+                                limpiar_pantalla();
                                 int cedulaBuscar;
                                 cout << "Ingrese la cedula del Cliente a buscar: ";
                                 cin >> cedulaBuscar;
@@ -916,6 +1267,7 @@ int main() {
                                 break;
                             }
                             case 2: {
+                                limpiar_pantalla();
                                 char nombreApellidoBuscar[50];
                                 cout << "Ingrese el nombre y apellido del Cliente a buscar: ";
                                 cin.ignore();
@@ -924,6 +1276,7 @@ int main() {
                                 break;
                             }
                             case 3: {
+                                limpiar_pantalla();
                                 char direccionBuscar[100];
                                 cout << "Ingrese la direccion del Cliente a buscar: ";
                                 cin.ignore();
@@ -948,6 +1301,7 @@ int main() {
                         }
                         case 6: {
                             //Guardar Estructura
+                            limpiar_pantalla();
                         ofstream archivo("Clientes.txt");
                         NodoCliente* actual = listaClientes;
                         while (actual != nullptr) {
@@ -955,7 +1309,6 @@ int main() {
                             archivo << "Nombre: " << actual->cliente.NombreApellido << "\n";
                             archivo << "Direccion: " << actual->cliente.Direccion << "\n";
                             archivo << "Telefono: " << actual->cliente.Telefono << "\n";
-                            archivo << "Frecuencia de Compra: " << actual->cliente.frecuencia << "dias""\n";
                             archivo << "------------------------\n";
                             actual = actual->siguiente;
                         }
@@ -964,6 +1317,7 @@ int main() {
                         break;
                         }
                         case 7:{
+                            limpiar_pantalla();
                             int opcionCLA;
                             cout << "\n Desea cargar los Clientes desde un archivo";
                             cout << "\n 1. Si";
@@ -972,6 +1326,7 @@ int main() {
                             cin >> opcionCLA;
                             switch (opcionCLA){
                             case 1:{
+                                limpiar_pantalla();
                                 leerClientesDesdeArchivo(listaClientes);
                                 cout << "\n Clientes Cargados Exitosamente";
                                 break;
@@ -986,16 +1341,17 @@ int main() {
                             break;
                         }
                         case 8: {
+                            limpiar_pantalla();
                             cout << "\n Regresando al menu principal...\n";
                         break;
                         }
                             
                         default:
-                            cout << "\n Opción no válida. Inténtalo de nuevo.";
+                            cout << "\n Opcion no válida. Intentalo de nuevo.";
                             break;
                         }
                     } else {
-                        cout << "\n Opción no válida. Inténtalo de nuevo.";
+                        cout << "\n Opcion no válida. Intentalo de nuevo.";
                         cin.clear();
                         cin.ignore(numeric_limits<streamsize>::max(), '\n');
                     }
@@ -1003,6 +1359,7 @@ int main() {
                     break;
             }
             case 3: {
+                limpiar_pantalla();
                 int opcionVendedores;
                 do {
                     cout << "\n ****Bienvenido al apartado de Vendedores****";
@@ -1015,11 +1372,11 @@ int main() {
                     cout << "\n 7. Cargar Vendedores";
                     cout << "\n 8. Salir al menu anterior";
                     cout << "\n Su opcion: ";
-
                     if (cin >> opcionVendedores) {
                         switch (opcionVendedores) {
                         case 1: {
                             // Agregar Vendedores
+                            limpiar_pantalla();
                             int n = obtenerCantidadVendedores();
                             for (int i = 0; i < n; i++) {
                                 Vendedor nuevoVendedor;
@@ -1034,8 +1391,6 @@ int main() {
                                 }
                                 cout << "\n Ingrese la fecha de ingreso del Vendedor " << i + 1 << ": ";
                                 cin.getline(nuevoVendedor.FechaIngreso, 15);
-                                cout << "\n Ingrese el porcentaje de comision del Vendedor " << i + 1 << ": ";
-                                cin >> nuevoVendedor.PorcentajeComision;
                                 cin.ignore();
                                 agregarVendedor(listaVendedores, nuevoVendedor);
                                 cout << "\n Vendedor Agregado Correctamente";
@@ -1044,6 +1399,7 @@ int main() {
                         }
                         case 2: {
                             // Modificar Vendedores
+                            limpiar_pantalla();
                             int cedula;
                             cout << "Ingrese la cedula del Vendedor a modificar: ";
                             cin >> cedula;
@@ -1052,6 +1408,7 @@ int main() {
                         }
                         case 3: {
                             // Eliminar Vendedores
+                            limpiar_pantalla();
                             int cedula;
                             cout << "Ingrese la cedula del Vendedor a eliminar: ";
                             cin >> cedula;
@@ -1060,9 +1417,13 @@ int main() {
                         }
                         case 4: {
                             // Mostrar Vendedores
-                            system("clear"); 
+                            limpiar_pantalla();
+                            
                             mostrarRegistrosdeVendedores(listaVendedores);
-                            system("sleep 5s");
+                            cout << "\n Pulse una tecla para continuar...";
+                            initscr();
+                            getch();
+                            endwin();
                             break;
                         }
                         case 5: {
@@ -1078,6 +1439,7 @@ int main() {
                                 if (cin >> opcionBusquedaVendedor) {
                                     switch (opcionBusquedaVendedor) {
                                     case 1: {
+                                        limpiar_pantalla();
                                         int cedula;
                                         cout << "Ingrese la cedula del Vendedor a buscar: ";
                                         cin >> cedula;
@@ -1085,6 +1447,7 @@ int main() {
                                         break;
                                     }
                                     case 2: {
+                                        limpiar_pantalla();
                                         char nombreApellido[50];
                                         cout << "Ingrese el nombre y apellido del Vendedor a buscar: ";
                                         cin.ignore();
@@ -1093,6 +1456,7 @@ int main() {
                                         break;
                                     }
                                     case 3: {
+                                        limpiar_pantalla();
                                         char fechaIngreso[15];
                                         cout << "Ingrese la fecha de ingreso del Vendedor a buscar: ";
                                         cin.ignore();
@@ -1101,6 +1465,7 @@ int main() {
                                         break;
                                     }
                                     case 4: {
+                                        limpiar_pantalla();
                                         cout << "\n Volviendo al menu anterior...\n";
                                         break;
                                     }
@@ -1118,13 +1483,13 @@ int main() {
                         }
                         case 6: {
                             //Guardar Estructura
+                            limpiar_pantalla();
                             ofstream archivo("Vendedores.txt");
                             NodoVendedor* actual = listaVendedores;
                             while (actual != nullptr) {
                             archivo << "Cedula: " << actual->vendedor.Cedula << "\n";
                             archivo << "Nombre: " << actual->vendedor.NombreApellido << "\n";
                             archivo << "Fecha de Ingreso: " << actual->vendedor.FechaIngreso<< "\n";
-                            archivo << "Comision: " << actual->vendedor.PorcentajeComision <<"%" "\n";
                             archivo << "------------------------\n";
                             actual = actual->siguiente;
                         }
@@ -1133,6 +1498,7 @@ int main() {
                         break;
                         }
                         case 7:{
+                            limpiar_pantalla();
                             int opcionCLA;
                             cout << "\n Desea cargar los Vendedores desde un archivo";
                             cout << "\n 1. Si";
@@ -1141,11 +1507,13 @@ int main() {
                             cin >> opcionCLA;
                             switch (opcionCLA){
                             case 1:{
+                                limpiar_pantalla();
                                 leerVendedoresDesdeArchivo(listaVendedores);
                                 cout << "\n Vendedores Cargados Exitosamente";
                                 break;
                             }
                             case 2: {
+                                limpiar_pantalla();
                                 cout << "\n Retornando al menu anterior";
                                 break;
                             }
@@ -1155,6 +1523,7 @@ int main() {
                             break;
                         }
                         case 8:{
+                            limpiar_pantalla();
                             cout << "\n Regresando al menu principal...\n";
                             break;
                         }
@@ -1170,8 +1539,90 @@ int main() {
                 } while (opcionVendedores != 8);
                     break;
             case 4:{
-                break;
-                } 
+                    limpiar_pantalla();
+                    int opcF;
+                    do {
+                        cout << "\n ****Bienvenido al apartado de Facturas****";
+                        cout << "\n 1. Crear una Factura";
+                        cout << "\n 2. Mostrar Facturas guardadas";
+                        cout << "\n 3. Eliminar una Factura";
+                        cout << "\n 4. Guardar Factura/s";
+                        cout << "\n 5. Regresar al menu principal";
+                        cout << "\n Su opcion:";
+                        cin >> opcF;
+                        switch (opcF) {
+                            case 1: {
+                                limpiar_pantalla();
+                                int n = obtenerCantidadFacturas();
+                                for (int i = 0; i < n; i++) {
+                                    Factura nuevaFactura;
+                                    int cedulaCliente;
+                                    int cedulaVendedor;
+                                    int codigoArticulo;
+                                    int cantidad;
+                                    int indiceArticulos = 0;
+                                    nuevaFactura.cantidadArticulos = 0;
+                                    nuevaFactura.totalCompra = 0;
+                                    nuevaFactura.NumeroFactura = generarNumeroFactura(listaFacturas);
+                                    for (int i = 0; i < 50; ++i) {
+                                        nuevaFactura.articulos[i].Codigo = 0;
+                                    }
+                                    nuevaFactura.datosCliente = LlenarClienteFactura(listaClientes);
+                                    nuevaFactura.datosVendedor = LlenarVendedorFactura(listaVendedores);
+                                    LlenarArticulosFactura(listaArticulos, nuevaFactura);
+                                    nuevaFactura.totalCompra = calcularTotalCompra(nuevaFactura.articulos, nuevaFactura.cantidadArticulos);
+                                    agregarFactura(listaFacturas, nuevaFactura);
+                                }
+                                cout << "\n Factura Creada Correctamente";
+                                break;
+                            }
+                            case 2: {
+                                limpiar_pantalla();
+                                mostrarRegistrodeFacturas(listaFacturas);
+                                cout << "\n Pulse una tecla para continuar...";
+                                initscr();
+                                getch();
+                                endwin();
+                                break;
+                            }
+                            case 3: {
+                                
+                                break;
+                            }
+                            case 4:{
+                                limpiar_pantalla();
+                                ofstream archivoFacturas("Facturas.txt");
+                                for (NodoFactura* nodo = listaFacturas; nodo != nullptr; nodo = nodo->siguiente) {
+                                    const Factura& factura = nodo->factura;
+                                    archivoFacturas << "\n------------------------- Facturas -------------------------\n";
+                                    archivoFacturas << setw(25) << left << "Numero de Factura:" << factura.NumeroFactura << "\n";
+                                    archivoFacturas << setw(25) << left << "Datos del Cliente:" << factura.datosCliente.NombreApellido
+                                                    << " (Cedula: " << factura.datosCliente.Cedula << ")\n";
+                                    archivoFacturas << setw(25) << left << "Datos del Vendedor:" << factura.datosVendedor.NombreApellido
+                                                    << " (Cedula: " << factura.datosVendedor.Cedula << ")\n";
+                                    archivoFacturas << "\n" << setw(10) << left << "Codigo" << setw(30) << left << "Nombre"
+                                                    << setw(15) << left << "Cantidad" << setw(15) << left << "Precio"
+                                                    << setw(15) << left << "Total\n";
+                                    for (int i = 0; i < factura.cantidadArticulos; ++i) {
+                                        archivoFacturas << setw(10) << left << factura.articulos[i].Codigo;
+                                        string nombre = factura.articulos[i].Nombre;
+                                        archivoFacturas << setw(30) << left << nombre.substr(0, 29);
+                                        archivoFacturas << setw(15) << left << factura.articulos[i].Cantidad;
+                                        archivoFacturas << setw(15) << left << factura.articulos[i].Precio;
+                                        archivoFacturas << setw(15) << left << (factura.articulos[i].Precio * factura.articulos[i].Cantidad) << "\n";
+                                    }
+                                    archivoFacturas << "\n" << setw(65) << right << "Total de la compra: " << factura.totalCompra << "$\n";
+                                    archivoFacturas << "\n-------------------------------------------------------------\n";
+                                }
+                                archivoFacturas.close();
+                                cout << "\nGuardado Generado Correctamente";
+                                break;
+                            }
+                            default:
+                                break;
+                        }
+                    } while (opcF != 5);
+            }
             }
             case 5:{
                 break;
@@ -1187,12 +1638,15 @@ int main() {
             cin.clear();
             cin.ignore(numeric_limits<streamsize>::max(), '\n');
         }
-    } while (opcion != 6);
+    } while (opcion != 5);
 
     // Liberar memoria antes de salir
     liberarMemoria(listaArticulos);
     liberarMemoriaClientes(listaClientes);
     liberarMemoriaVendedores(listaVendedores);
+    liberarMemoriaFacturas(listaFacturas);
+    
 
     return 0;
-}
+    }
+
